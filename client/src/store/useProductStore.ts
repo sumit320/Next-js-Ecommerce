@@ -16,6 +16,7 @@ export interface Product {
   rating?: number;
   soldCount: number;
   images: string[];
+  isFeatured?: boolean;
 }
 
 interface ProductState {
