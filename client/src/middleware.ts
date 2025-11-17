@@ -15,7 +15,7 @@ const publicRoutes = [
   "/contact",
 ];
 const protectedRoutes = ["/checkout", "/account", "/order-success"];
-const superAdminRoutes = ["/super-admin", "/super-admim/:path*"];
+const superAdminRoutes = ["/super-admin", "/super-admin/:path*"];
 
 export async function middleware(request: NextRequest) {
   const accessToken = request.cookies.get("accessToken")?.value;
@@ -39,9 +39,15 @@ export async function middleware(request: NextRequest) {
 
   if (accessToken) {
     try {
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) {
+        console.error("JWT_SECRET is not set");
+        throw new Error("JWT_SECRET is not configured");
+      }
+      
       const { payload } = await jwtVerify(
         accessToken,
-        new TextEncoder().encode(process.env.JWT_SECRET)
+        new TextEncoder().encode(jwtSecret)
       );
       const { role } = payload as {
         role: string;
@@ -73,34 +79,18 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     } catch (e) {
       console.error("Token verification failed", e);
-      const refreshResponse = await fetch(
-        "http://localhost:3000/api/auth/refresh-token",
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
-
-      if (refreshResponse.ok) {
-        const response = NextResponse.next();
-        response.cookies.set(
-          "accessToken",
-          refreshResponse.headers.get("Set-Cookie") || ""
-        );
-        return response;
-      } else {
-        // Refresh failed - clear tokens
-        const response = NextResponse.next();
-        response.cookies.delete("accessToken");
-        response.cookies.delete("refreshToken");
-        
-        // If trying to access protected route, redirect to login
-        if (isProtectedRoute || isSuperAdminRoute) {
-          return NextResponse.redirect(new URL("/auth/login", request.url));
-        }
-        
-        return response;
+      
+      // Token verification failed - clear tokens and redirect if needed
+      const response = NextResponse.next();
+      response.cookies.delete("accessToken");
+      response.cookies.delete("refreshToken");
+      
+      // If trying to access protected route, redirect to login
+      if (isProtectedRoute || isSuperAdminRoute) {
+        return NextResponse.redirect(new URL("/auth/login", request.url));
       }
+      
+      return response;
     }
   }
 

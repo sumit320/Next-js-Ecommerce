@@ -88,11 +88,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       
       if (axios.isAxiosError(e)) {
         if (e.code === "ECONNABORTED" || e.message === "Network Error" || e.code === "ERR_NETWORK") {
-          errorMessage = "Server is not responding. Please check if the server is running on http://localhost:3001";
+          errorMessage = "Server is not responding. Please check your connection and try again.";
         } else if (e.response) {
           errorMessage = `Failed to fetch banners: ${e.response.status} - ${e.response.statusText}`;
         } else if (e.code === "ECONNREFUSED") {
-          errorMessage = "Connection refused. Make sure the server is running on http://localhost:3001";
+          errorMessage = "Connection refused. Please check your server configuration.";
         }
       }
       

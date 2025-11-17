@@ -300,9 +300,14 @@ function CheckoutContent() {
                     fundingSource="card"
                     onError={(err) => {
                       console.error("PayPal SDK Error:", err);
+                      const errorMessage = err instanceof Error 
+                        ? err.message 
+                        : typeof err === 'string' 
+                        ? err 
+                        : "An error occurred with PayPal";
                       toast({
                         title: "PayPal Error",
-                        description: err.message || "An error occurred with PayPal",
+                        description: errorMessage,
                         variant: "destructive",
                       });
                     }}
