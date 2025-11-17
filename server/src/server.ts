@@ -10,6 +10,8 @@ import settingsRoutes from "./routes/settingRoutes";
 import cartRoutes from "./routes/cartRoutes";
 import addressRoutes from "./routes/addressRoutes";
 import orderRoutes from "./routes/orderRoutes";
+import wishlistRoutes from "./routes/wishlistRoutes";
+import paypalRoutes from "./routes/paypalRoutes";
 
 //load all your enviroment variables
 dotenv.config();
@@ -17,15 +19,55 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 const corsOptions = {
-  origin: "http://localhost:3000",
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // In development, allow all localhost origins
+    if (process.env.NODE_ENV === "development") {
+      if (origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+        return callback(null, true);
+      }
+    }
+    
+    // List of allowed origins for production
+    const allowedOrigins = [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:3002",
+      "http://localhost:3003",
+      "http://localhost:3004",
+      "http://localhost:3005",
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
+
+// Request logging middleware (development only)
+if (process.env.NODE_ENV === "development") {
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api/paypal")) {
+      console.log(`[${req.method}] ${req.path}`, {
+        body: req.body,
+        query: req.query,
+      });
+    }
+    next();
+  });
+}
 
 export const prisma = new PrismaClient();
 
@@ -36,6 +78,8 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/address", addressRoutes);
 app.use("/api/order", orderRoutes);
+app.use("/api/wishlist", wishlistRoutes);
+app.use("/api/paypal", paypalRoutes);
 
 app.get("/", (req, res) => {
   res.send("Hello from E-Commerce backend");

@@ -47,7 +47,7 @@ interface ProductState {
 
 export const useProductStore = create<ProductState>((set, get) => ({
   products: [],
-  isLoading: true,
+  isLoading: false,
   error: null,
   currentPage: 1,
   totalPages: 1,
@@ -62,9 +62,14 @@ export const useProductStore = create<ProductState>((set, get) => ({
         }
       );
 
-      set({ products: response.data, isLoading: false });
-    } catch (e) {
-      set({ error: "Failed to fetch product", isLoading: false });
+      // Ensure response.data is an array
+      const products = Array.isArray(response.data) ? response.data : [];
+      console.log("Fetched products:", products.length, products);
+      set({ products, isLoading: false });
+    } catch (e: any) {
+      console.error("Error fetching products:", e);
+      const errorMessage = e?.response?.data?.message || e?.message || "Failed to fetch products";
+      set({ error: errorMessage, isLoading: false, products: [] });
     }
   },
   createProduct: async (productData: FormData) => {
@@ -82,8 +87,10 @@ export const useProductStore = create<ProductState>((set, get) => ({
       );
       set({ isLoading: false });
       return response.data;
-    } catch (e) {
-      set({ error: "Failed to create product", isLoading: false });
+    } catch (e: any) {
+      const errorMessage = e?.response?.data?.message || "Failed to create product";
+      set({ error: errorMessage, isLoading: false });
+      throw e; // Re-throw to allow form to handle it
     }
   },
   updateProduct: async (id: string, productData: FormData) => {
@@ -95,14 +102,16 @@ export const useProductStore = create<ProductState>((set, get) => ({
         {
           withCredentials: true,
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "multipart/form-data",
           },
         }
       );
       set({ isLoading: false });
       return response.data;
-    } catch (e) {
-      set({ error: "Failed to create product", isLoading: false });
+    } catch (e: any) {
+      const errorMessage = e?.response?.data?.message || "Failed to update product";
+      set({ error: errorMessage, isLoading: false });
+      throw e; // Re-throw to allow form to handle it
     }
   },
   deleteProduct: async (id: string) => {

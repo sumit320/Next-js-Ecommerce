@@ -1,18 +1,7 @@
 import multer from "multer";
-import path from "path";
 
-//configure stroage
-const stroage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/");
-  },
-  filename: function (req, file, cb) {
-    cb(
-      null,
-      file.filename + "-" + Date.now() + path.extname(file.originalname)
-    );
-  },
-});
+// Configure memory storage to use file.buffer instead of disk storage
+const storage = multer.memoryStorage();
 
 const fileFilter = (
   req: any,
@@ -22,12 +11,12 @@ const fileFilter = (
   if (file.mimetype.startsWith("image")) {
     cb(null, true);
   } else {
-    cb(new Error("Not an mage! Please upload only images."));
+    cb(new Error("Not an image! Please upload only images."));
   }
 };
 
 export const upload = multer({
-  storage: stroage,
+  storage: storage,
   fileFilter: fileFilter,
   limits: { fieldSize: 1024 * 1024 * 5 },
 });

@@ -1,8 +1,7 @@
-import { Response } from "express";
+import { Request, Response } from "express";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
-import cloudinary from "../config/cloudinary";
+import { uploadToSupabase, deleteFromSupabase } from "../utils/supabase";
 import { prisma } from "../server";
-import fs from "fs";
 import { Prisma } from "@prisma/client";
 
 //create a product
@@ -25,15 +24,42 @@ export const createProduct = async (
 
     const files = req.files as Express.Multer.File[];
 
-    //upload all images to cloudinary
-    const uploadPromises = files.map((file) =>
-      cloudinary.uploader.upload(file.path, {
-        folder: "ecommerce",
-      })
-    );
+    // Validate that files exist
+    if (!files || files.length === 0) {
+      res.status(400).json({ 
+        success: false, 
+        message: "Please upload at least one image" 
+      });
+      return;
+    }
 
-    const uploadresults = await Promise.all(uploadPromises);
-    const imageUrls = uploadresults.map((result) => result.secure_url);
+    //upload all images to Supabase Storage
+    let imageUrls: string[] = [];
+    try {
+      const uploadPromises = files.map(async (file) => {
+        if (!file.buffer) {
+          throw new Error(`File buffer is missing for file: ${file.originalname}`);
+        }
+        
+        // Upload to Supabase Storage using file buffer
+        const publicUrl = await uploadToSupabase(
+          file.buffer,
+          file.originalname,
+          file.mimetype
+        );
+        
+        return publicUrl;
+      });
+
+      imageUrls = await Promise.all(uploadPromises);
+    } catch (uploadError) {
+      console.error("Supabase upload error:", uploadError);
+      res.status(500).json({ 
+        success: false, 
+        message: "Failed to upload images to Supabase. Please check your Supabase configuration." 
+      });
+      return;
+    }
 
     const newlyCreatedProduct = await prisma.product.create({
       data: {
@@ -52,12 +78,11 @@ export const createProduct = async (
       },
     });
 
-    //clean the uploaded files
-    files.forEach((file) => fs.unlinkSync(file.path));
     res.status(201).json(newlyCreatedProduct);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ success: false, message: "Some error occured!" });
+    console.error("Product creation error:", e);
+    const errorMessage = e instanceof Error ? e.message : "Some error occurred!";
+    res.status(500).json({ success: false, message: errorMessage });
   }
 };
 
@@ -77,7 +102,7 @@ export const fetchAllProductsForAdmin = async (
 
 //get a single product
 export const getProductByID = async (
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response
 ): Promise<void> => {
   try {
@@ -91,6 +116,7 @@ export const getProductByID = async (
         success: false,
         message: "Product not found",
       });
+      return;
     }
 
     res.status(200).json(product);
@@ -117,12 +143,122 @@ export const updateProduct = async (
       price,
       stock,
       rating,
+      existingImages,
+      imagesToDelete,
     } = req.body;
 
-    console.log(req.body, "req.body");
+    // Get current product to check existing images
+    const currentProduct = await prisma.product.findUnique({
+      where: { id },
+      select: { images: true },
+    });
 
-    //homework -> you can also implement image update func
+    if (!currentProduct) {
+      res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+      return;
+    }
 
+    let finalImages: string[] = [];
+
+    // Handle existing images
+    if (existingImages) {
+      try {
+        const existingImagesArray = typeof existingImages === 'string' 
+          ? JSON.parse(existingImages) 
+          : existingImages;
+        finalImages = existingImagesArray.filter((img: string) => 
+          currentProduct.images.includes(img)
+        );
+      } catch (e) {
+        // If parsing fails, use current images
+        finalImages = currentProduct.images;
+      }
+    } else {
+      // If no existingImages provided, keep all current images
+      finalImages = currentProduct.images;
+    }
+
+    // Remove deleted images and delete them from Supabase
+    if (imagesToDelete) {
+      try {
+        const imagesToDeleteArray = typeof imagesToDelete === 'string'
+          ? JSON.parse(imagesToDelete)
+          : imagesToDelete;
+        
+        if (Array.isArray(imagesToDeleteArray) && imagesToDeleteArray.length > 0) {
+          console.log(`Deleting ${imagesToDeleteArray.length} image(s) from Supabase...`);
+          
+        // Delete images from Supabase Storage
+          const deleteResults = await Promise.all(
+            imagesToDeleteArray.map(async (imageUrl: string) => {
+              const result = await deleteFromSupabase(imageUrl);
+              if (!result.success) {
+                console.warn(`Failed to delete image ${imageUrl}: ${result.error}`);
+              }
+              return result;
+            })
+          );
+          
+          const successCount = deleteResults.filter(r => r.success).length;
+          const failCount = deleteResults.filter(r => !r.success).length;
+          
+          console.log(`Image deletion summary: ${successCount} succeeded, ${failCount} failed`);
+          
+          // Remove deleted images from final images array
+        finalImages = finalImages.filter(
+          (img: string) => !imagesToDeleteArray.includes(img)
+        );
+        }
+      } catch (e) {
+        console.error("Error parsing or processing imagesToDelete:", e);
+        // Continue with update even if deletion fails
+      }
+    }
+
+    // Upload new images if any
+    const files = req.files as Express.Multer.File[];
+    if (files && files.length > 0) {
+      try {
+        const uploadPromises = files.map(async (file) => {
+          if (!file.buffer) {
+            throw new Error(`File buffer is missing for file: ${file.originalname}`);
+          }
+          
+          // Upload to Supabase Storage using file buffer
+          const publicUrl = await uploadToSupabase(
+            file.buffer,
+            file.originalname,
+            file.mimetype
+          );
+          
+          return publicUrl;
+        });
+
+        const newImageUrls = await Promise.all(uploadPromises);
+        finalImages = [...finalImages, ...newImageUrls];
+      } catch (uploadError) {
+        console.error("Supabase upload error:", uploadError);
+        res.status(500).json({ 
+          success: false, 
+          message: "Failed to upload new images to Supabase." 
+        });
+        return;
+      }
+    }
+
+    // Ensure at least one image remains
+    if (finalImages.length === 0) {
+      res.status(400).json({
+        success: false,
+        message: "Product must have at least one image",
+      });
+      return;
+    }
+
+    // Update product with new data and images
     const product = await prisma.product.update({
       where: { id },
       data: {
@@ -136,13 +272,15 @@ export const updateProduct = async (
         price: parseFloat(price),
         stock: parseInt(stock),
         rating: parseInt(rating),
+        images: finalImages,
       },
     });
 
     res.status(200).json(product);
   } catch (e) {
-    console.error(e);
-    res.status(500).json({ success: false, message: "Some error occured!" });
+    console.error("Product update error:", e);
+    const errorMessage = e instanceof Error ? e.message : "Some error occurred!";
+    res.status(500).json({ success: false, message: errorMessage });
   }
 };
 //delete a product (admin)
@@ -152,6 +290,42 @@ export const deleteProduct = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
+    
+    // Fetch the product first to get the image URLs
+    const product = await prisma.product.findUnique({
+      where: { id },
+      select: { images: true },
+    });
+
+    if (!product) {
+      res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+      return;
+    }
+
+    // Delete all product images from Supabase Storage
+    if (product.images && product.images.length > 0) {
+      console.log(`Deleting ${product.images.length} image(s) from Supabase for product ${id}...`);
+      
+      const deleteResults = await Promise.all(
+        product.images.map(async (imageUrl: string) => {
+          const result = await deleteFromSupabase(imageUrl);
+          if (!result.success) {
+            console.warn(`Failed to delete image ${imageUrl}: ${result.error}`);
+          }
+          return result;
+        })
+      );
+      
+      const successCount = deleteResults.filter(r => r.success).length;
+      const failCount = deleteResults.filter(r => !r.success).length;
+      
+      console.log(`Product image deletion summary: ${successCount} succeeded, ${failCount} failed`);
+    }
+
+    // Delete the product from database
     await prisma.product.delete({ where: { id } });
 
     res
@@ -165,7 +339,7 @@ export const deleteProduct = async (
 //fetch products with filter (client)
 
 export const getProductsForClient = async (
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response
 ): Promise<void> => {
   try {
@@ -242,13 +416,6 @@ export const getProductsForClient = async (
       prisma.product.count({ where }),
     ]);
 
-    console.log(
-      Math.ceil(total / limit),
-      total,
-      limit,
-      "Math.ceil(total / limit)"
-    );
-
     res.status(200).json({
       success: true,
       products,
@@ -259,5 +426,125 @@ export const getProductsForClient = async (
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Some error occured!" });
+  }
+};
+
+// Search products
+export const searchProducts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { query, limit = "10" } = req.query;
+    const searchQuery = (query as string) || "";
+    const searchLimit = parseInt(limit as string) || 10;
+
+    if (!searchQuery.trim()) {
+      res.status(200).json({
+        success: true,
+        products: [],
+        total: 0,
+      });
+      return;
+    }
+
+    const where: Prisma.productWhereInput = {
+      OR: [
+        {
+          name: {
+            contains: searchQuery,
+            mode: "insensitive",
+          },
+        },
+        {
+          brand: {
+            contains: searchQuery,
+            mode: "insensitive",
+          },
+        },
+        {
+          description: {
+            contains: searchQuery,
+            mode: "insensitive",
+          },
+        },
+        {
+          category: {
+            contains: searchQuery,
+            mode: "insensitive",
+          },
+        },
+      ],
+    };
+
+    const [products, total] = await Promise.all([
+      prisma.product.findMany({
+        where,
+        take: searchLimit,
+        orderBy: {
+          soldCount: "desc",
+        },
+      }),
+      prisma.product.count({ where }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      products,
+      total,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Search failed" });
+  }
+};
+
+// Get related products
+export const getRelatedProducts = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const limit = parseInt(req.query.limit as string) || 4;
+
+    const product = await prisma.product.findUnique({
+      where: { id },
+      select: { category: true, brand: true },
+    });
+
+    if (!product) {
+      res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+      return;
+    }
+
+    const relatedProducts = await prisma.product.findMany({
+      where: {
+        AND: [
+          { id: { not: id } },
+          {
+            OR: [
+              { category: product.category },
+              { brand: product.brand },
+            ],
+          },
+        ],
+      },
+      take: limit,
+      orderBy: {
+        soldCount: "desc",
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      products: relatedProducts,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Failed to fetch related products" });
   }
 };

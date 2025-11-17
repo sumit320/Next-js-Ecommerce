@@ -14,17 +14,18 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
+  id           String     @id @default(cuid())
   name         String?
-  email        String    @unique
+  email        String     @unique
   password     String
-  role         Role      @default(USER)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  refreshToken String?   @unique
+  role         Role       @default(USER)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  refreshToken String?    @unique
   cart         Cart?
   addresses    Address[]
   orders       Order[]
+  wishlist     WishlistItem[]
 }
 
 model product {
@@ -70,10 +71,44 @@ model CartItem {
 }
 
 model FeatureBanner {
-  id        String   @id @default(cuid())
-  imageUrl  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(cuid())
+  imageUrl    String
+  title       String?  // e.g., "I AM JOHN"
+  subtitle    String?  // e.g., "BEST SELLING E-COMMERCE WEBSITE"
+  description String?  // e.g., "A Creative, Flexible, Clean, Easy to use and High Performance E-Commerce Theme"
+  buttonText  String?  // e.g., "SHOP NOW"
+  buttonLink  String?  // e.g., "/listing"
+  showText    Boolean  @default(true) // Whether to show text and button on user side
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model ListingPageBanner {
+  id          String   @id @default(cuid())
+  imageUrl    String
+  title       String?  // e.g., "HOT COLLECTION"
+  subtitle    String?  // e.g., "Discover our latest collection"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GridItem {
+  id          String   @id @default(cuid())
+  imageUrl    String
+  title       String
+  subtitle    String
+  link        String?  // Optional link when clicking the grid item
+  order       Int      @default(0) // For ordering items
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GridSectionSettings {
+  id          String   @id @default(cuid())
+  title       String?  // Section title, e.g., "THE WINTER EDIT"
+  subtitle    String?  // Section subtitle, e.g., "Designed to keep your satisfaction and warmth"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Coupon {
@@ -84,6 +119,7 @@ model Coupon {
   endDate         DateTime
   usageLimit      Int
   usageCount      Int
+  isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   orders          Order[]
@@ -166,4 +202,16 @@ enum PaymentMethod {
 enum PaymentStatus {
   PENDING
   COMPLETED
+}
+
+model WishlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, productId])
+  @@index([userId])
 }

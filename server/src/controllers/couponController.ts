@@ -80,3 +80,47 @@ export const deleteCoupon = async (
     });
   }
 };
+
+export const toggleCouponStatus = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    const coupon = await prisma.coupon.findUnique({
+      where: { id },
+    });
+
+    if (!coupon) {
+      res.status(404).json({
+        success: false,
+        message: "Coupon not found",
+      });
+      return;
+    }
+
+    // If isActive is provided in body, use it; otherwise toggle
+    const newStatus = isActive !== undefined ? isActive : !coupon.isActive;
+
+    const updatedCoupon = await prisma.coupon.update({
+      where: { id },
+      data: {
+        isActive: newStatus,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Coupon ${updatedCoupon.isActive ? "activated" : "deactivated"} successfully!`,
+      coupon: updatedCoupon,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update coupon status",
+    });
+  }
+};

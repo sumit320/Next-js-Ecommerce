@@ -15,9 +15,10 @@ import { CartItem, useCartStore } from "@/store/useCartStore";
 import { Coupon, useCouponStore } from "@/store/useCouponStore";
 import { useOrderStore } from "@/store/useOrderStore";
 import { useProductStore } from "@/store/useProductStore";
-import { PayPalButtons } from "@paypal/react-paypal-js";
+import { PayPalButtons, usePayPalScriptReducer } from "@paypal/react-paypal-js";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { PLACEHOLDER_IMAGE, handleImageError } from "@/utils/placeholders";
 
 function CheckoutContent() {
   const { addresses, fetchAddresses } = useAddressStore();
@@ -41,12 +42,27 @@ function CheckoutContent() {
   } = useOrderStore();
   const { user } = useAuthStore();
   const router = useRouter();
+  
+  // Check PayPal SDK loading status
+  const [{ isResolved, isRejected }] = usePayPalScriptReducer();
 
   useEffect(() => {
+    if (!user) {
+      router.push("/auth/login");
+      return;
+    }
+    
+    // Sync guest cart to server if user just logged in
+    const syncAndFetch = async () => {
+      const cartStore = useCartStore.getState();
+      await cartStore.syncGuestCartToServer();
+      await fetchCart();
+    };
+    
+    syncAndFetch();
     fetchCoupons();
     fetchAddresses();
-    fetchCart();
-  }, [fetchAddresses, fetchCart, fetchCoupons]);
+  }, [user, router, fetchAddresses, fetchCart, fetchCoupons]);
 
   useEffect(() => {
     const findDefaultAddress = addresses.find((address) => address.isDefault);
@@ -76,6 +92,12 @@ function CheckoutContent() {
 
     if (!getCurrentCoupon) {
       setCouponAppliedError("Invalied Coupon code");
+      setAppliedCoupon(null);
+      return;
+    }
+
+    if (!getCurrentCoupon.isActive) {
+      setCouponAppliedError("This coupon is currently inactive");
       setAppliedCoupon(null);
       return;
     }
@@ -123,6 +145,7 @@ function CheckoutContent() {
     if (!user) {
       toast({
         title: "User not authenticated",
+        variant: "destructive",
       });
 
       return;
@@ -178,6 +201,10 @@ function CheckoutContent() {
 
   const total = subTotal - discountAmount;
 
+  if (!user) {
+    return null; // Will redirect via useEffect
+  }
+
   if (isPaymentProcessing) {
     return (
       <Skeleton className="w-full h-[600px] rounded-xl">
@@ -191,7 +218,7 @@ function CheckoutContent() {
   }
 
   return (
-    <div className="min-h-screen bg-white py-8">
+    <div className="min-h-screen bg-gray-100 py-8">
       <div className="container mx-auto px-4 max-w-7xl">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
@@ -238,7 +265,32 @@ function CheckoutContent() {
                   <p className="mb-3">
                     All transactions are secure and encrypted
                   </p>
-                  <PayPalButtons
+                  {isRejected ? (
+                    <div className="p-4 border border-red-300 rounded-md bg-red-50">
+                      <p className="text-red-800 font-medium mb-2">
+                        ⚠️ PayPal Client ID Error (HTTP 400)
+                      </p>
+                      <p className="text-red-700 text-sm mb-3">
+                        The PayPal Client ID is invalid or not properly configured.
+                      </p>
+                      <div className="text-red-600 text-sm space-y-1">
+                        <p className="font-medium">To fix this:</p>
+                        <ol className="list-decimal list-inside space-y-1 ml-2">
+                          <li>Go to <a href="https://developer.paypal.com/dashboard" target="_blank" rel="noopener noreferrer" className="underline">PayPal Developer Dashboard</a></li>
+                          <li>Navigate to "My Apps & Credentials"</li>
+                          <li>Find your Sandbox app (or create a new one)</li>
+                          <li>Copy the correct Client ID</li>
+                          <li>Update it in <code className="bg-red-100 px-1 rounded">client/src/app/checkout/page.tsx</code> or set <code className="bg-red-100 px-1 rounded">NEXT_PUBLIC_PAYPAL_CLIENT_ID</code> in <code className="bg-red-100 px-1 rounded">.env.local</code></li>
+                          <li>Restart your development server</li>
+                        </ol>
+                      </div>
+                    </div>
+                  ) : !isResolved ? (
+                    <div className="p-4 border border-gray-300 rounded-md bg-gray-50">
+                      <p className="text-gray-700">Loading PayPal payment options...</p>
+                    </div>
+                  ) : (
+                    <PayPalButtons
                     style={{
                       layout: "vertical",
                       color: "black",
@@ -246,30 +298,77 @@ function CheckoutContent() {
                       label: "pay",
                     }}
                     fundingSource="card"
+                    onError={(err) => {
+                      console.error("PayPal SDK Error:", err);
+                      toast({
+                        title: "PayPal Error",
+                        description: err.message || "An error occurred with PayPal",
+                        variant: "destructive",
+                      });
+                    }}
                     createOrder={async () => {
-                      const orderId = await createPayPalOrder(
-                        cartItemsWithDetails,
-                        total
-                      );
+                      try {
+                        console.log("[Checkout] Starting PayPal order creation...");
+                        console.log("[Checkout] Items:", cartItemsWithDetails);
+                        console.log("[Checkout] Total:", total);
+                        
+                        const orderId = await createPayPalOrder(
+                          cartItemsWithDetails,
+                          total
+                        );
 
-                      if (orderId === null) {
-                        throw new Error("Failed to create paypal order");
+                        if (!orderId) {
+                          const errorMsg = "Failed to create PayPal order: No order ID returned";
+                          console.error("[Checkout]", errorMsg);
+                          toast({
+                            title: "Payment Error",
+                            description: errorMsg,
+                            variant: "destructive",
+                          });
+                          throw new Error(errorMsg);
+                        }
+
+                        console.log("[Checkout] PayPal order created successfully:", orderId);
+                        return orderId;
+                      } catch (error: any) {
+                        console.error("[Checkout] PayPal createOrder error:", error);
+                        console.error("[Checkout] Error stack:", error.stack);
+                        
+                        const errorMessage = error.message || "Failed to initialize payment";
+                        toast({
+                          title: "Payment Error",
+                          description: errorMessage,
+                          variant: "destructive",
+                        });
+                        throw error;
                       }
-
-                      return orderId;
                     }}
                     onApprove={async (data, actions) => {
-                      const captureData = await capturePayPalOrder(
-                        data.orderID
-                      );
+                      try {
+                        const captureData = await capturePayPalOrder(
+                          data.orderID
+                        );
 
-                      if (captureData) {
-                        await handleFinalOrderCreation(captureData);
-                      } else {
-                        alert("Failed to capture paypal order");
+                        if (captureData) {
+                          await handleFinalOrderCreation(captureData);
+                        } else {
+                          toast({
+                            title: "Payment Capture Failed",
+                            description: "Failed to capture PayPal payment. Please contact support.",
+                            variant: "destructive",
+                          });
+                        }
+                      } catch (error: any) {
+                        console.error("PayPal onApprove error:", error);
+                        toast({
+                          title: "Payment Error",
+                          description: error.message || "Failed to process payment",
+                          variant: "destructive",
+                        });
                       }
                     }}
-                  />
+                    />
+                  )}
                 </div>
               ) : (
                 <div>
@@ -303,9 +402,11 @@ function CheckoutContent() {
                   <div key={item.id} className="flex items-center space-x-4">
                     <div className="relative h-2- w-20 rounded-md overflow-hidden">
                       <img
-                        src={item?.product?.images[0]}
+                        src={item?.product?.images[0] || PLACEHOLDER_IMAGE}
                         alt={item?.product?.name}
                         className="object-cover"
+                        onError={(e) => handleImageError(e)}
+                        loading="lazy"
                       />
                     </div>
                     <div className="flex-1">

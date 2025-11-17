@@ -8,9 +8,27 @@ import {
   getProductByID,
   updateProduct,
   getProductsForClient,
+  searchProducts,
+  getRelatedProducts,
 } from "../controllers/productController";
 
 const router = expess.Router();
+
+// IMPORTANT: Specific routes must come BEFORE parameterized routes (/:id)
+// Otherwise Express will match /:id first and never reach the specific routes
+
+// Public endpoints - no authentication required (for browsing products)
+router.get("/fetch-client-products", getProductsForClient);
+router.get("/search", searchProducts);
+
+// Protected endpoints - require authentication
+// These must come before /:id routes
+router.get(
+  "/fetch-admin-products",
+  authenticateJwt,
+  isSuperAdmin,
+  fetchAllProductsForAdmin
+);
 
 router.post(
   "/create-new-product",
@@ -20,16 +38,10 @@ router.post(
   createProduct
 );
 
-router.get(
-  "/fetch-admin-products",
-  authenticateJwt,
-  isSuperAdmin,
-  fetchAllProductsForAdmin
-);
-
-router.get("/fetch-client-products", authenticateJwt, getProductsForClient);
-router.get("/:id", authenticateJwt, getProductByID);
-router.put("/:id", authenticateJwt, isSuperAdmin, updateProduct);
+// Parameterized routes - must come AFTER specific routes
+router.get("/:id/related", getRelatedProducts);
+router.get("/:id", getProductByID);
+router.put("/:id", authenticateJwt, isSuperAdmin, upload.array("images", 10), updateProduct);
 router.delete("/:id", authenticateJwt, isSuperAdmin, deleteProduct);
 
 export default router;

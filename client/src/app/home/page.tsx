@@ -3,56 +3,37 @@
 import { Button } from "@/components/ui/button";
 import { useSettingsStore } from "@/store/useSettingsStore";
 import { useEffect, useState } from "react";
-
-const gridItems = [
-  {
-    title: "WOMEN",
-    subtitle: "From world's top designer",
-    image:
-      "https://images.unsplash.com/photo-1614251056216-f748f76cd228?q=80&w=1974&auto=format&fit=crop",
-  },
-  {
-    title: "FALL LEGENDS",
-    subtitle: "Timeless cool weather",
-    image:
-      "https://avon-demo.myshopify.com/cdn/shop/files/demo1-winter1_600x.png?v=1733380268",
-  },
-  {
-    title: "ACCESSORIES",
-    subtitle: "Everything you need",
-    image:
-      "https://avon-demo.myshopify.com/cdn/shop/files/demo1-winter4_600x.png?v=1733380275",
-  },
-  {
-    title: "HOLIDAY SPARKLE EDIT",
-    subtitle: "Party season ready",
-    image:
-      "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?q=80&w=1974&auto=format&fit=crop",
-  },
-];
+import { useRouter } from "next/navigation";
+import { Skeleton } from "@/components/ui/skeleton";
+import { ShoppingBag, Star } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { PLACEHOLDER_IMAGE, handleImageError } from "@/utils/placeholders";
 
 function HomePage() {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const { banners, featuredProducts, fetchFeaturedProducts, fetchBanners } =
+  const router = useRouter();
+  const { banners, featuredProducts, gridItems, gridSectionSettings, fetchFeaturedProducts, fetchBanners, fetchGridItems, fetchGridSectionSettings, isLoading } =
     useSettingsStore();
 
   useEffect(() => {
     fetchBanners();
     fetchFeaturedProducts();
-  }, [fetchBanners, fetchFeaturedProducts]);
+    fetchGridItems();
+    fetchGridSectionSettings();
+  }, [fetchBanners, fetchFeaturedProducts, fetchGridItems, fetchGridSectionSettings]);
 
   useEffect(() => {
-    const bannerTimer = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % banners.length);
-    }, 5000);
+    if (banners.length > 0) {
+      const bannerTimer = setInterval(() => {
+        setCurrentSlide((prev) => (prev + 1) % banners.length);
+      }, 5000);
 
-    return () => clearInterval(bannerTimer);
+      return () => clearInterval(bannerTimer);
+    }
   }, [banners.length]);
 
-  console.log(banners, featuredProducts);
-
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gray-100">
       <section className="relative h-[600px] overflow-hidden">
         {banners.map((bannerItem, index) => (
           <div
@@ -61,34 +42,57 @@ function HomePage() {
             }`}
             key={bannerItem.id}
           >
-            <div className="absolute inset-0">
+            <div className="absolute inset-0 z-0">
               <img
                 src={bannerItem.imageUrl}
                 alt={`Banner ${index + 1}`}
                 className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 bg-black bg-opacity-20" />
+              <div className="absolute inset-0 bg-black bg-opacity-20 pointer-events-none" />
             </div>
-            <div className="relative h-full container mx-auto px-4 flex items-center">
-              <div className="text-white space-y-6">
-                <span className="text-sm uppercase tracking-wider">
-                  I AM JOHN
-                </span>
-                <h1 className="text-5xl lg:text-7xl font-bold leading-tight">
-                  BEST SELLING
-                  <br />
-                  E-COMMERCE WEBSITE
-                </h1>
-                <p className="text-lg">
-                  A Creative, Flexible , Clean, Easy to use and
-                  <br />
-                  High Performance E-Commerce Theme
-                </p>
-                <Button className="bg-white text-black hover:bg-gray-100 px-8 py-6 text-lg">
-                  SHOP NOW
-                </Button>
+            {bannerItem.showText !== false && (
+              <div className="relative h-full container mx-auto px-4 flex items-center z-20">
+                <div className="text-white space-y-6 relative z-20">
+                  {bannerItem.title && (
+                    <span className="text-sm uppercase tracking-wider">
+                      {bannerItem.title}
+                    </span>
+                  )}
+                  {bannerItem.subtitle && (
+                    <h1 className="text-5xl lg:text-7xl font-bold leading-tight">
+                      {bannerItem.subtitle.split('\n').map((line: string, i: number, arr: string[]) => (
+                        <span key={i}>
+                          {line}
+                          {i < arr.length - 1 && <br />}
+                        </span>
+                      ))}
+                    </h1>
+                  )}
+                  {bannerItem.description && (
+                    <p className="text-lg">
+                      {bannerItem.description.split('\n').map((line: string, i: number, arr: string[]) => (
+                        <span key={i}>
+                          {line}
+                          {i < arr.length - 1 && <br />}
+                        </span>
+                      ))}
+                    </p>
+                  )}
+                  <Button 
+                    type="button"
+                    className="bg-white text-black hover:bg-gray-100 px-8 py-6 text-lg transition-all hover:scale-105 relative z-10 cursor-pointer"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const link = bannerItem.buttonLink || "/listing";
+                      router.push(link);
+                    }}
+                  >
+                    {bannerItem.buttonText || "SHOP NOW"}
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ))}
         <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex space-x-2">
@@ -109,75 +113,179 @@ function HomePage() {
       {/* grid section */}
       <section className="py-16">
         <div className="container mx-auto px-4">
-          <h2 className="text-center text-3xl font-semibold mb-2">
-            THE WINTER EDIT
-          </h2>
-          <p className="text-center text-gray-500 mb-8">
-            Designed to keep your satisfaction and warmth
-          </p>
+          {(gridSectionSettings?.title || gridSectionSettings?.subtitle) && (
+            <>
+              {gridSectionSettings.title && (
+                <h2 className="text-center text-3xl font-semibold mb-2">
+                  {gridSectionSettings.title}
+                </h2>
+              )}
+              {gridSectionSettings.subtitle && (
+                <p className="text-center text-gray-500 mb-8">
+                  {gridSectionSettings.subtitle}
+                </p>
+              )}
+            </>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {gridItems.map((gridItem, index) => (
-              <div key={index} className="relative group overflow-hidden">
-                <div className="aspect-[3/4]">
-                  <img
-                    src={gridItem.image}
-                    alt={gridItem.title}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                  />
-                </div>
-                <div className="absolute inset-0 bg-black bg-opacity-25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <div className="text-center text-white p-4">
-                    <h3 className="text-xl font-semibold mb-2">
-                      {gridItem.title}
-                    </h3>
-                    <p className="text-sm">{gridItem.subtitle}</p>
-                    <Button className="mt-4 bg-white text-black hover:bg-gray-100">
-                      SHOP NOW
-                    </Button>
+            {gridItems.length > 0 ? (
+              gridItems.map((gridItem) => (
+                <div key={gridItem.id} className="relative group overflow-hidden cursor-pointer" onClick={() => router.push(gridItem.link || "/listing")}>
+                  <div className="aspect-[3/4]">
+                    <img
+                      src={gridItem.imageUrl}
+                      alt={gridItem.title}
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                      onError={(e) => {
+                        e.currentTarget.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Crect width='400' height='400' fill='%23e5e7eb'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' font-family='Arial' font-size='16' fill='%239ca3af'%3ENo Image%3C/text%3E%3C/svg%3E";
+                      }}
+                    />
+                  </div>
+                  <div className="absolute inset-0 bg-black bg-opacity-25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <div className="text-center text-white p-4">
+                      <h3 className="text-xl font-semibold mb-2">
+                        {gridItem.title}
+                      </h3>
+                      <p className="text-sm">{gridItem.subtitle}</p>
+                      <Button 
+                        className="mt-4 bg-white text-black hover:bg-gray-100 transition-all hover:scale-105"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(gridItem.link || "/listing");
+                        }}
+                      >
+                        SHOP NOW
+                      </Button>
+                    </div>
                   </div>
                 </div>
+              ))
+            ) : (
+              <div className="col-span-4 text-center text-gray-500 py-8">
+                No grid items available
               </div>
-            ))}
+            )}
           </div>
         </div>
       </section>
 
       {/* Feature products section */}
-      <section className="py-16">
+      <section className="py-16 bg-gray-50">
         <div className="container mx-auto px-4">
           <h2 className="text-center text-3xl font-semibold mb-2">
             NEW ARRIVALS
           </h2>
-          <p className="text-center text-gray-500 mb-8">
+          <p className="text-center text-gray-500 mb-12">
             Shop our new arrivals from established brands
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {featuredProducts.map((productItem, index) => (
-              <div key={index} className="relative group overflow-hidden">
-                <div className="aspect-[3/4]">
-                  <img
-                    src={productItem.images[0]}
-                    alt={productItem.name}
-                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                  />
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="space-y-4">
+                  <Skeleton className="aspect-[3/4] w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
                 </div>
-                <div className="absolute inset-0 bg-black bg-opacity-25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <div className="text-center text-white p-4">
-                    <h3 className="text-xl font-semibold mb-2">
-                      {productItem.name}
-                    </h3>
-                    <p className="text-sm">{productItem.price}</p>
-                    <Button className="mt-4 bg-white text-black hover:bg-gray-100">
-                      QUICK ViEW
+              ))}
+            </div>
+          ) : featuredProducts.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No featured products available</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {featuredProducts.map((productItem, index) => (
+                <div 
+                  key={productItem.id || index} 
+                  className="relative group overflow-hidden bg-white rounded-lg shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer"
+                  onClick={() => router.push(`/listing/${productItem.id}`)}
+                >
+                  <div className="aspect-[3/4] relative overflow-hidden">
+                    <img
+                      src={productItem.images?.[0] || PLACEHOLDER_IMAGE}
+                      alt={productItem.name}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                      onError={(e) => handleImageError(e)}
+                      loading="lazy"
+                    />
+                  </div>
+                  <div className="p-4">
+                    <h3 className="font-semibold mb-1 line-clamp-1">{productItem.name}</h3>
+                    <div className="flex items-center justify-between mt-2">
+                      <span className="text-lg font-bold">{productItem.price || "$0.00"}</span>
+                    </div>
+                  </div>
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
+                    <Button 
+                      className="bg-white text-black hover:bg-gray-100 transition-all hover:scale-105"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/listing/${productItem.id}`);
+                      }}
+                    >
+                      <ShoppingBag className="mr-2 h-4 w-4" />
+                      VIEW PRODUCT
                     </Button>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
+
+      {/* Recently Viewed Products */}
+      <RecentlyViewedSection />
     </div>
+  );
+}
+
+function RecentlyViewedSection() {
+  const [recentlyViewed, setRecentlyViewed] = useState<any[]>([]);
+  const [mounted, setMounted] = useState(false);
+  const router = useRouter();
+
+  useEffect(() => {
+    setMounted(true);
+    const viewed = JSON.parse(localStorage.getItem("recentlyViewed") || "[]");
+    setRecentlyViewed(viewed.slice(0, 4));
+  }, []);
+
+  if (!mounted || recentlyViewed.length === 0) return null;
+
+  return (
+    <section className="py-16 bg-white">
+      <div className="container mx-auto px-4">
+        <h2 className="text-center text-3xl font-semibold mb-2">
+          RECENTLY VIEWED
+        </h2>
+        <p className="text-center text-gray-500 mb-12">
+          Continue shopping from where you left off
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {recentlyViewed.map((item) => (
+            <Card
+              key={item.id}
+              className="group overflow-hidden hover:shadow-lg transition-all duration-300 cursor-pointer"
+              onClick={() => router.push(`/listing/${item.id}`)}
+            >
+              <div className="relative aspect-[3/4] bg-gray-100 overflow-hidden">
+                <img
+                  src={item.image || PLACEHOLDER_IMAGE}
+                  alt={item.name}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                  onError={(e) => handleImageError(e)}
+                  loading="lazy"
+                />
+              </div>
+              <div className="p-4">
+                <h3 className="font-semibold mb-1 line-clamp-1">{item.name}</h3>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 

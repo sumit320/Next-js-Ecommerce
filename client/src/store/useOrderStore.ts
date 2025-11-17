@@ -89,31 +89,93 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
   createPayPalOrder: async (items, total) => {
     set({ isLoading: true, error: null });
     try {
+      console.log("[Client] Creating PayPal order:", { itemsCount: items.length, total });
+      console.log("[Client] API URL:", `${API_ROUTES.PAYPAL}/create-order`);
+      
       const response = await axios.post(
-        `${API_ROUTES.ORDER}/create-paypal-order`,
+        `${API_ROUTES.PAYPAL}/create-order`,
         { items, total },
-        { withCredentials: true }
+        { 
+          withCredentials: true,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
       );
+      
+      console.log("[Client] PayPal order response:", response.data);
+      console.log("[Client] Response status:", response.status);
       set({ isLoading: false });
+      
+      // PayPal SDK expects just the order ID string
+      if (!response.data || !response.data.id) {
+        console.error("[Client] PayPal order response missing ID:", response.data);
+        const errorMsg = response.data?.message || "Invalid response from server: missing order ID";
+        set({ error: errorMsg, isLoading: false });
+        throw new Error(errorMsg);
+      }
+      
       return response.data.id;
-    } catch (error) {
-      set({ error: "Failed to create paypal order", isLoading: false });
-      return null;
+    } catch (error: any) {
+      console.error("[Client] PayPal order creation error:", error);
+      console.error("[Client] Error type:", error.constructor.name);
+      console.error("[Client] Error message:", error.message);
+      console.error("[Client] Server response:", error.response?.data);
+      console.error("[Client] Status code:", error.response?.status);
+      console.error("[Client] Request URL:", error.config?.url);
+      
+      let errorMessage = "Failed to create PayPal order";
+      
+      if (error.response) {
+        // Server responded with error
+        const serverError = error.response.data;
+        
+        // Check for PayPal authentication errors
+        if (serverError?.error?.code === "invalid_client" || serverError?.error?.description?.includes("Client Authentication failed")) {
+          errorMessage = "PayPal authentication failed. The Client ID and Secret are invalid or don't match. Please check your PayPal credentials in the server/.env file.";
+          console.error("[Client] PayPal Authentication Error:", serverError.error);
+        } else {
+          errorMessage = serverError?.message || serverError?.error?.message || error.message || errorMessage;
+        }
+        
+        console.error("[Client] Full error response:", JSON.stringify(serverError, null, 2));
+      } else if (error.request) {
+        // Request made but no response
+        errorMessage = "Server is not responding. Please check if the server is running on port 3001.";
+        console.error("[Client] No response from server. Request:", error.request);
+      } else {
+        // Error setting up request
+        errorMessage = error.message || errorMessage;
+      }
+      
+      set({ error: errorMessage, isLoading: false });
+      throw new Error(errorMessage);
     }
   },
   capturePayPalOrder: async (orderId) => {
     set({ isLoading: true, error: null, isPaymentProcessing: true });
     try {
+      console.log("[Client] Capturing PayPal order:", orderId);
+      
       const response = await axios.post(
-        `${API_ROUTES.ORDER}/capture-paypal-order`,
+        `${API_ROUTES.PAYPAL}/capture-order`,
         { orderId },
-        { withCredentials: true }
+        { 
+          withCredentials: true,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
       );
+      
+      console.log("[Client] PayPal capture response:", response.data);
       set({ isLoading: false, isPaymentProcessing: false });
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
+      console.error("[Client] PayPal capture error:", error);
+      console.error("[Client] Server response:", error.response?.data);
       set({
-        error: "Failed to capture paypal order",
+        error: error.response?.data?.message || "Failed to capture paypal order",
         isLoading: false,
         isPaymentProcessing: false,
       });

@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 function ProductDetailsSkeleton() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-gray-100">
       <div className="container mx-auto px-4 py-8">
         <div className="flex flex-col lg:flex-row gap-8">
           <div className="lg:w-2/3 flex gap-4">

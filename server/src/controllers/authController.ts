@@ -40,6 +40,35 @@ async function setTokens(
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, email, password } = req.body;
+
+    // Validate required fields
+    if (!name || !email || !password) {
+      res.status(400).json({
+        success: false,
+        error: "Name, email, and password are required",
+      });
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      res.status(400).json({
+        success: false,
+        error: "Invalid email format",
+      });
+      return;
+    }
+
+    // Validate password length
+    if (password.length < 6) {
+      res.status(400).json({
+        success: false,
+        error: "Password must be at least 6 characters long",
+      });
+      return;
+    }
+
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       res.status(400).json({
@@ -64,9 +93,22 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       success: true,
       userId: user.id,
     });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Registration failed" });
+  } catch (error: any) {
+    console.error("Registration error:", error);
+    
+    // Handle Prisma errors
+    if (error.code === "P2002") {
+      res.status(400).json({
+        success: false,
+        error: "User with this email already exists",
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message || "Registration failed",
+    });
   }
 };
 

@@ -15,10 +15,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useProductStore } from "@/store/useProductStore";
 import { brands, categories, colors, sizes } from "@/utils/config";
-import { Upload } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
 interface FormState {
   name: string;
@@ -44,13 +44,16 @@ function SuperAdminManageProductPage() {
   const [selectedSizes, setSelectSizes] = useState<string[]>([]);
   const [selectedColors, setSelectColors] = useState<string[]>([]);
   const [selectedfiles, setSelectFiles] = useState<File[]>([]);
+  const [existingImages, setExistingImages] = useState<string[]>([]);
+  const [imagesToDelete, setImagesToDelete] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const getCurrentEditedProductId = searchParams.get("id");
   const isEditMode = !!getCurrentEditedProductId;
 
   const router = useRouter();
-  const { createProduct, updateProduct, getProductById, isLoading, error } =
+  const { createProduct, updateProduct, getProductById, isLoading, error, fetchAllProductsForAdmin } =
     useProductStore();
 
   useEffect(() => {
@@ -68,6 +71,7 @@ function SuperAdminManageProductPage() {
           });
           setSelectSizes(product.sizes);
           setSelectColors(product.colors);
+          setExistingImages(product.images || []);
         }
       });
     }
@@ -88,6 +92,9 @@ function SuperAdminManageProductPage() {
       });
       setSelectColors([]);
       setSelectSizes([]);
+      setSelectFiles([]);
+      setExistingImages([]);
+      setImagesToDelete([]);
     }
   }, [getCurrentEditedProductId]);
 
@@ -121,18 +128,75 @@ function SuperAdminManageProductPage() {
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
-      setSelectFiles(Array.from(event.target.files));
+      const newFiles = Array.from(event.target.files);
+      setSelectFiles((prev) => [...prev, ...newFiles]);
     }
+  };
+
+  const handleRemoveNewImage = (index: number) => {
+    setSelectFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleDeleteExistingImage = (imageUrl: string) => {
+    setImagesToDelete((prev) => [...prev, imageUrl]);
+    setExistingImages((prev) => prev.filter((img) => img !== imageUrl));
+  };
+
+  const handleFileUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleFormSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    // Validate required fields
+    if (!isEditMode && selectedfiles.length === 0) {
+      toast({
+        title: "Please select at least one image",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // In edit mode, ensure at least one image remains (existing or new)
+    if (isEditMode && existingImages.length === 0 && selectedfiles.length === 0) {
+      toast({
+        title: "Product must have at least one image",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formState.name || !formState.brand || !formState.category || !formState.gender || !formState.price || !formState.stock) {
+      toast({
+        title: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedSizes.length === 0) {
+      toast({
+        title: "Please select at least one size",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (selectedColors.length === 0) {
+      toast({
+        title: "Please select at least one color",
+        variant: "destructive",
+      });
+      return;
+    }
 
     const checkFirstLevelFormSanitization = await protectProductFormAction();
 
     if (!checkFirstLevelFormSanitization.success) {
       toast({
         title: checkFirstLevelFormSanitization.error,
+        variant: "destructive",
       });
       return;
     }
@@ -145,18 +209,41 @@ function SuperAdminManageProductPage() {
     formData.append("sizes", selectedSizes.join(","));
     formData.append("colors", selectedColors.join(","));
 
-    if (!isEditMode) {
+    // Add new images
       selectedfiles.forEach((file) => {
         formData.append("images", file);
       });
+
+    // Add existing images to keep
+    formData.append("existingImages", JSON.stringify(existingImages));
+    
+    // Add images to delete
+    if (imagesToDelete.length > 0) {
+      formData.append("imagesToDelete", JSON.stringify(imagesToDelete));
     }
 
-    const result = isEditMode
-      ? await updateProduct(getCurrentEditedProductId, formData)
-      : await createProduct(formData);
-    console.log(result, "result");
-    if (result) {
-      router.push("/super-admin/products/list");
+    try {
+      const result = isEditMode
+        ? await updateProduct(getCurrentEditedProductId, formData)
+        : await createProduct(formData);
+      if (result) {
+        toast({
+          title: isEditMode ? "Product updated successfully" : "Product created successfully",
+          variant: "default",
+        });
+        // Refetch products before navigating to ensure the list is up to date
+        await fetchAllProductsForAdmin();
+        // Small delay to ensure database transaction is committed and state is updated
+        setTimeout(() => {
+          router.push("/super-admin/products/list");
+          router.refresh(); // Force Next.js to refresh the page
+        }, 300);
+      }
+    } catch (error: any) {
+      toast({
+        title: error?.response?.data?.message || error || "Failed to create product",
+        variant: "destructive",
+      });
     }
   };
 
@@ -164,45 +251,97 @@ function SuperAdminManageProductPage() {
     <div className="p-6">
       <div className="flex flex-col gap-6">
         <header className="flex items-center justify-between">
-          <h1>Add Product</h1>
+          <h1 className="text-2xl font-bold text-gray-800">{isEditMode ? "Edit Product" : "Add Product"}</h1>
         </header>
+        <div className="bg-white rounded-lg shadow-lg p-8">
         <form
           onSubmit={handleFormSubmit}
           className="grid gap-6 md:grid-cols-2 lg:grid-cols-1"
         >
-          {isEditMode ? null : (
-            <div className="mt-2 w-full flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-400 p-12">
-              <div className="text-center">
-                <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                <div className="mt-4 flex text-sm leadin-6 text-gray-600">
-                  <Label>
-                    <span>Click to browse</span>
-                    <input
-                      type="file"
-                      className="sr-only"
-                      multiple
-                      onChange={handleFileChange}
-                    />
-                  </Label>
-                </div>
-              </div>
-              {selectedfiles.length > 0 && (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {selectedfiles.map((file, index) => (
-                    <div key={index} className="relative">
+          <div className="mt-2 w-full space-y-4">
+            {/* Existing Images (Edit Mode Only) */}
+            {isEditMode && existingImages.length > 0 && (
+              <div>
+                <Label className="mb-2 block">Existing Images</Label>
+                <div className="flex flex-wrap gap-2">
+                  {existingImages.map((imageUrl, index) => (
+                    <div key={index} className="relative group">
                       <Image
-                        src={URL.createObjectURL(file)}
-                        alt={`Preview ${index + 1}`}
-                        width={80}
-                        height={80}
-                        className="h-20 w-20 object-cover rounded-md"
+                        src={imageUrl}
+                        alt={`Existing ${index + 1}`}
+                        width={100}
+                        height={100}
+                        className="h-24 w-24 object-cover rounded-md border-2 border-gray-200"
                       />
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteExistingImage(imageUrl)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Image Upload Section */}
+            <div>
+              <Label className="mb-2 block">
+                {isEditMode ? "Add More Images" : "Product Images"}
+              </Label>
+              <div 
+                className="w-full flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-400 p-8 cursor-pointer hover:bg-gray-50 transition-colors"
+              onClick={handleFileUploadClick}
+            >
+              <div className="text-center">
+                  <Upload className="mx-auto h-10 w-10 text-gray-400" />
+                  <div className="mt-2 text-sm leading-6 text-gray-600">
+                  <span>Click to browse</span>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="sr-only"
+                    multiple
+                    accept="image/*"
+                    onChange={handleFileChange}
+                  />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    You can select multiple images
+                  </p>
+                </div>
+              </div>
+              
+              {/* New Image Previews */}
+              {selectedfiles.length > 0 && (
+                <div className="mt-4">
+                  <Label className="mb-2 block">New Images to Upload</Label>
+                  <div className="flex flex-wrap gap-2">
+                  {selectedfiles.map((file, index) => (
+                      <div key={index} className="relative group">
+                      <Image
+                        src={URL.createObjectURL(file)}
+                        alt={`Preview ${index + 1}`}
+                          width={100}
+                          height={100}
+                          className="h-24 w-24 object-cover rounded-md border-2 border-blue-200"
+                      />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveNewImage(index)}
+                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                    </div>
+                  ))}
+                  </div>
+                </div>
               )}
             </div>
-          )}
+          </div>
           <div className="space-y-4">
             <div>
               <Label>Product Name</Label>
@@ -337,12 +476,15 @@ function SuperAdminManageProductPage() {
             <Button
               disabled={isLoading}
               type="submit"
-              className="mt-1.5 w-full"
+              className="mt-1.5 w-full bg-red-500 hover:bg-red-600 text-white h-11 text-base font-semibold"
             >
-              {isLoading ? "Creating..." : "Create"}
+              {isLoading 
+                ? (isEditMode ? "Updating..." : "Creating...") 
+                : (isEditMode ? "Update Product" : "Create Product")}
             </Button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );

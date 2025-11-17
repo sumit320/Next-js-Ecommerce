@@ -9,6 +9,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useCouponStore } from "@/store/useCouponStore";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -18,7 +25,7 @@ import { Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 function SuperAdminCouponsListingPage() {
-  const { isLoading, couponList, fetchCoupons, deleteCoupon } =
+  const { isLoading, couponList, fetchCoupons, deleteCoupon, toggleCouponStatus } =
     useCouponStore();
   const router = useRouter();
   const fetchCouponRef = useRef(false);
@@ -36,9 +43,26 @@ function SuperAdminCouponsListingPage() {
       if (result) {
         toast({
           title: "Coupon deleted successfully",
+          variant: "success",
         });
         fetchCoupons();
       }
+    }
+  };
+
+  const handleStatusChange = async (id: string, newStatus: "active" | "inactive") => {
+    const shouldBeActive = newStatus === "active";
+    const result = await toggleCouponStatus(id, shouldBeActive);
+    if (result) {
+      toast({
+        title: result.isActive ? "Coupon activated successfully" : "Coupon deactivated successfully",
+        variant: "success",
+      });
+    } else {
+      toast({
+        title: "Failed to update coupon status",
+        variant: "destructive",
+      });
     }
   };
 
@@ -48,11 +72,15 @@ function SuperAdminCouponsListingPage() {
     <div className="p-6 space-y-6">
       <div className="flex flex-col gap-6">
         <header className="flex items-center justify-between">
-          <h1>All Coupons</h1>
-          <Button onClick={() => router.push("/super-admin/coupons/add")}>
+          <h1 className="text-2xl font-bold text-gray-800">All Coupons</h1>
+          <Button 
+            onClick={() => router.push("/super-admin/coupons/add")}
+            className="bg-red-500 hover:bg-red-600 text-white"
+          >
             Add New Coupon
           </Button>
         </header>
+        <div className="bg-white rounded-lg shadow-lg p-6">
         <Table>
           <TableHeader>
             <TableRow>
@@ -86,11 +114,27 @@ function SuperAdminCouponsListingPage() {
                   {format(new Date(coupon.endDate), "dd MMM yyyy")}
                 </TableCell>
                 <TableCell>
-                  <Badge>
-                    {new Date(coupon.endDate) > new Date()
-                      ? "Active"
-                      : "Expired"}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={coupon.isActive ? "active" : "inactive"}
+                      onValueChange={(value) =>
+                        handleStatusChange(coupon.id, value as "active" | "inactive")
+                      }
+                    >
+                      <SelectTrigger className="w-[120px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {new Date(coupon.endDate) < new Date() && (
+                      <Badge variant="outline" className="text-xs">
+                        Expired
+                      </Badge>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <Button
@@ -105,6 +149,7 @@ function SuperAdminCouponsListingPage() {
             ))}
           </TableBody>
         </Table>
+        </div>
       </div>
     </div>
   );

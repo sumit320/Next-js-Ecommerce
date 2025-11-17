@@ -69,6 +69,7 @@ function UserAccountPage() {
           fetchAddresses();
           toast({
             title: "Address created successfully",
+            variant: "success",
           });
         }
       }
@@ -106,6 +107,7 @@ function UserAccountPage() {
         if (success) {
           toast({
             title: "Address is deleted successfully",
+            variant: "success",
           });
         }
       } catch (e) {
@@ -140,7 +142,7 @@ function UserAccountPage() {
   if (isLoading) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="min-h-screen bg-gray-100 py-8">
       <div className="container mx-auto px-4">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">MY ACCOUNT</h1>
@@ -168,31 +170,70 @@ function UserAccountPage() {
                         <TableHead>Date</TableHead>
                         <TableHead>Items</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Payment</TableHead>
                         <TableHead>Total</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {userOrders.map((order) => (
                         <TableRow key={order.id}>
                           <TableCell className="font-medium">
-                            {order.id}
+                            <span className="font-mono text-xs">
+                              {order.id.slice(0, 8)}...
+                            </span>
                           </TableCell>
                           <TableCell>
-                            {new Date(order.createdAt).toLocaleDateString()}
+                            {new Date(order.createdAt).toLocaleDateString("en-US", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            })}
                           </TableCell>
                           <TableCell>
-                            {order.items.length}{" "}
-                            {order.items.length > 1 ? "Items" : "Item"}
+                            <div className="flex items-center gap-2">
+                              <span>{order.items.length}</span>
+                              <span className="text-gray-500">
+                                {order.items.length > 1 ? "Items" : "Item"}
+                              </span>
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Badge
-                              className={`${getStatusColor(order.status)}`}
+                              className={`${getStatusColor(order.status)} text-white`}
                             >
                               {order.status.charAt(0).toUpperCase() +
                                 order.status.slice(1)}
                             </Badge>
                           </TableCell>
-                          <TableCell>${order.total.toFixed(2)}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                order.paymentStatus === "COMPLETED"
+                                  ? "default"
+                                  : "secondary"
+                              }
+                            >
+                              {order.paymentStatus === "COMPLETED"
+                                ? "Paid"
+                                : "Pending"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-semibold">
+                            ${order.total.toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                // TODO: Add order details modal/page
+                                alert(`Order Details:\nID: ${order.id}\nStatus: ${order.status}\nItems: ${order.items.length}`);
+                              }}
+                            >
+                              View Details
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

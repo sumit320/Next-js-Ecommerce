@@ -69,12 +69,14 @@ function SuperAdminManageCouponsPage() {
       ...formData,
       discountPercent: parseFloat(formData.discountPercent.toString()),
       usageLimit: parseInt(formData.usageLimit.toString()),
+      isActive: true,
     };
 
     const result = await createCoupon(couponData);
     if (result) {
       toast({
         title: "Coupon added successfully",
+        variant: "success",
       });
 
       router.push("/super-admin/coupons/list");
@@ -85,8 +87,9 @@ function SuperAdminManageCouponsPage() {
     <div className="p-6">
       <div className="flex flex-col gap-6">
         <header className="flex items-center justify-between">
-          <h1>Create New Coupon</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Create New Coupon</h1>
         </header>
+        <div className="bg-white rounded-lg shadow-lg p-8">
         <form
           onSubmit={handleCouponSubmit}
           className="grid gap-6 md:grid-cols-2 lg:grid-cols-1"
@@ -155,11 +158,16 @@ function SuperAdminManageCouponsPage() {
                 onChange={handleInputChange}
               />
             </div>
-            <Button disabled={isLoading} type="submit" className="w-full">
+            <Button 
+              disabled={isLoading} 
+              type="submit" 
+              className="w-full bg-red-500 hover:bg-red-600 text-white h-11 text-base font-semibold"
+            >
               {isLoading ? "creating..." : "Create"}
             </Button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );

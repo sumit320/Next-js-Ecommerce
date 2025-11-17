@@ -60,14 +60,16 @@ function SuperAdminManageOrdersPage() {
     await updateOrderStatus(orderId, newStatus);
     toast({
       title: "Status updated successfully",
+      variant: "success",
     });
   };
 
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">ORDERS LIST</h1>
+        <h1 className="text-2xl font-bold text-gray-800">ORDERS LIST</h1>
       </div>
+      <div className="bg-white rounded-lg shadow-lg p-6">
       <Table>
         <TableHeader>
           <TableRow>
@@ -131,6 +133,7 @@ function SuperAdminManageOrdersPage() {
           )}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

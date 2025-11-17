@@ -10,6 +10,7 @@ export interface Coupon {
   endDate: string;
   usageLimit: number;
   usageCount: number;
+  isActive: boolean;
 }
 
 interface CouponStore {
@@ -21,6 +22,7 @@ interface CouponStore {
     coupon: Omit<Coupon, "id" | "usageCount">
   ) => Promise<Coupon | null>;
   deleteCoupon: (id: string) => Promise<boolean>;
+  toggleCouponStatus: (id: string) => Promise<Coupon | null>;
 }
 
 export const useCouponStore = create<CouponStore>((set, get) => ({
@@ -65,6 +67,27 @@ export const useCouponStore = create<CouponStore>((set, get) => ({
       return response.data.success;
     } catch (error) {
       set({ isLoading: false, error: "Failed to fetch coupons" });
+      return null;
+    }
+  },
+  toggleCouponStatus: async (id: string, isActive?: boolean) => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await axios.patch(
+        `${API_ROUTES.COUPON}/${id}/toggle-status`,
+        isActive !== undefined ? { isActive } : {},
+        { withCredentials: true }
+      );
+      const updatedCoupon = response.data.coupon;
+      set((state) => ({
+        couponList: state.couponList.map((coupon) =>
+          coupon.id === id ? updatedCoupon : coupon
+        ),
+        isLoading: false,
+      }));
+      return updatedCoupon;
+    } catch (error) {
+      set({ isLoading: false, error: "Failed to update coupon status" });
       return null;
     }
   },

@@ -64,8 +64,15 @@ function SuperAdminSidebar({ isOpen, toggle }: SidebarProps) {
   const { logout } = useAuthStore();
 
   async function handleLogout() {
-    await logout();
-    router.push("/auth/login");
+    try {
+      await logout();
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      // Always redirect to login page, even if logout fails
+      // Use window.location for more reliable redirect
+      window.location.href = "/auth/login";
+    }
   }
 
   return (

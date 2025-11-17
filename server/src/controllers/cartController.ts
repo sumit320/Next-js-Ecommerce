@@ -19,48 +19,91 @@ export const addToCart = async (
       return;
     }
 
-    const cart = await prisma.cart.upsert({
-      where: { userId },
-      create: { userId },
-      update: {},
-    });
-
-    const cartItem = await prisma.cartItem.upsert({
-      where: {
-        cartId_productId_size_color: {
-          cartId: cart.id,
-          productId,
-          size: size || null,
-          color: color || null,
-        },
-      },
-      update: {
-        quantity: { increment: quantity },
-      },
-      create: {
-        cartId: cart.id,
-        productId,
-        quantity,
-        size,
-        color,
-      },
-    });
-
+    // Check product stock before adding to cart
     const product = await prisma.product.findUnique({
       where: { id: productId },
       select: {
+        stock: true,
         name: true,
         price: true,
         images: true,
       },
     });
 
+    if (!product) {
+      res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+      return;
+    }
+
+    if (product.stock <= 0) {
+      res.status(400).json({
+        success: false,
+        message: "Product is out of stock",
+      });
+      return;
+    }
+
+    const cart = await prisma.cart.upsert({
+      where: { userId },
+      create: { userId },
+      update: {},
+    });
+
+    // Find existing cart item with same product, size, and color
+    const existingCartItem = await prisma.cartItem.findFirst({
+      where: {
+        cartId: cart.id,
+        productId,
+        size: size || null,
+        color: color || "",
+      },
+    });
+
+    // Calculate total quantity (existing + new)
+    const newQuantity = existingCartItem 
+      ? existingCartItem.quantity + quantity 
+      : quantity;
+
+    // Check if total quantity exceeds stock
+    if (newQuantity > product.stock) {
+      res.status(400).json({
+        success: false,
+        message: `Only ${product.stock} items available in stock. You already have ${existingCartItem?.quantity || 0} in your cart.`,
+      });
+      return;
+    }
+
+    let cartItem;
+    if (existingCartItem) {
+      // Update existing item
+      cartItem = await prisma.cartItem.update({
+        where: { id: existingCartItem.id },
+        data: {
+          quantity: { increment: quantity },
+        },
+      });
+    } else {
+      // Create new item
+      cartItem = await prisma.cartItem.create({
+        data: {
+          cartId: cart.id,
+          productId,
+          quantity,
+          size: size || null,
+          color: color || "",
+        },
+      });
+    }
+
     const responseItem = {
       id: cartItem.id,
       productId: cartItem.productId,
-      name: product?.name,
-      price: product?.price,
-      image: product?.images[0],
+      name: product.name,
+      price: product.price,
+      image: product.images[0],
       color: cartItem.color,
       size: cartItem.size,
       quantity: cartItem.quantity,
@@ -71,9 +114,11 @@ export const addToCart = async (
       data: responseItem,
     });
   } catch (e) {
+    console.error("Add to cart error:", e);
     res.status(500).json({
       success: false,
       message: "Some error occured!",
+      error: process.env.NODE_ENV === "development" ? String(e) : undefined,
     });
   }
 };
@@ -201,6 +246,57 @@ export const updateCartItemQuantity = async (
       return;
     }
 
+    // Get the cart item first to check product stock
+    const cartItem = await prisma.cartItem.findUnique({
+      where: {
+        id,
+        cart: { userId },
+      },
+    });
+
+    if (!cartItem) {
+      res.status(404).json({
+        success: false,
+        message: "Cart item not found",
+    });
+      return;
+    }
+
+    // Check product stock
+    const product = await prisma.product.findUnique({
+      where: { id: cartItem.productId },
+      select: {
+        stock: true,
+        name: true,
+        price: true,
+        images: true,
+      },
+    });
+
+    if (!product) {
+      res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+      return;
+    }
+
+    if (quantity > product.stock) {
+      res.status(400).json({
+        success: false,
+        message: `Only ${product.stock} items available in stock`,
+      });
+      return;
+    }
+
+    if (quantity <= 0) {
+      res.status(400).json({
+        success: false,
+        message: "Quantity must be greater than 0",
+      });
+      return;
+    }
+
     const updatedItem = await prisma.cartItem.update({
       where: {
         id,
@@ -209,21 +305,12 @@ export const updateCartItemQuantity = async (
       data: { quantity },
     });
 
-    const product = await prisma.product.findUnique({
-      where: { id: updatedItem.productId },
-      select: {
-        name: true,
-        price: true,
-        images: true,
-      },
-    });
-
     const responseItem = {
       id: updatedItem.id,
       productId: updatedItem.productId,
-      name: product?.name,
-      price: product?.price,
-      image: product?.images[0],
+      name: product.name,
+      price: product.price,
+      image: product.images[0],
       color: updatedItem.color,
       size: updatedItem.size,
       quantity: updatedItem.quantity,
