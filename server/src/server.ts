@@ -46,7 +46,10 @@ const corsOptions = {
     // Also allow any Vercel domain (for production deployments)
     const isVercelDomain = origin.includes(".vercel.app") || origin.includes("vercel.app");
     
-    if (allowedOrigins.indexOf(origin) !== -1 || isVercelDomain) {
+    // Also allow any Render.com domain (for production deployments)
+    const isRenderDomain = origin.includes(".onrender.com") || origin.includes("onrender.com");
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || isVercelDomain || isRenderDomain) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
