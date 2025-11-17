@@ -5,14 +5,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useRouter, useSearchParams } from "next/navigation";
 import { protectSignInAction } from "@/actions/auth";
 import { Eye, EyeOff } from "lucide-react";
 
-function LoginPage() {
+function LoginForm() {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -175,6 +175,30 @@ function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-[calc(100vh-4rem)] bg-gray-100 flex items-center justify-center p-4 py-12">
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-lg shadow-lg p-8">
+            <div className="animate-pulse">
+              <div className="h-8 bg-gray-200 rounded w-3/4 mx-auto mb-4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/2 mx-auto mb-8"></div>
+              <div className="space-y-4">
+                <div className="h-10 bg-gray-200 rounded"></div>
+                <div className="h-10 bg-gray-200 rounded"></div>
+                <div className="h-10 bg-gray-200 rounded"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   );
 }
 
