@@ -78,7 +78,26 @@ if (process.env.NODE_ENV === "development") {
   });
 }
 
-export const prisma = new PrismaClient();
+// Initialize Prisma Client with connection pooling support
+export const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
+  errorFormat: "pretty",
+});
+
+// Test database connection on startup
+prisma.$connect()
+  .then(() => {
+    console.log("✅ Successfully connected to database");
+  })
+  .catch((error) => {
+    console.error("❌ Failed to connect to database:", error.message);
+    console.error("Please check your DATABASE_URL environment variable");
+    if (error.message.includes("Can't reach database server")) {
+      console.error("\n💡 For Supabase, make sure you're using:");
+      console.error("   - Connection pooler URL (port 6543) with ?pgbouncer=true");
+      console.error("   - Or direct URL (port 5432) with ?sslmode=require");
+    }
+  });
 
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
