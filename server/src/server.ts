@@ -30,17 +30,23 @@ const corsOptions = {
       }
     }
     
-    // List of allowed origins for production
-    const allowedOrigins = [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:3002",
-      "http://localhost:3003",
-      "http://localhost:3004",
-      "http://localhost:3005",
-    ];
+    // Get allowed origins from environment variable or use defaults
+    const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
+    const allowedOrigins = allowedOriginsEnv 
+      ? allowedOriginsEnv.split(",").map(origin => origin.trim())
+      : [
+          "http://localhost:3000",
+          "http://localhost:3001",
+          "http://localhost:3002",
+          "http://localhost:3003",
+          "http://localhost:3004",
+          "http://localhost:3005",
+        ];
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    // Also allow any Vercel domain (for production deployments)
+    const isVercelDomain = origin.includes(".vercel.app") || origin.includes("vercel.app");
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || isVercelDomain) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
