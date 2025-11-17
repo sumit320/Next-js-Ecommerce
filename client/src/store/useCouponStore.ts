@@ -22,7 +22,7 @@ interface CouponStore {
     coupon: Omit<Coupon, "id" | "usageCount">
   ) => Promise<Coupon | null>;
   deleteCoupon: (id: string) => Promise<boolean>;
-  toggleCouponStatus: (id: string) => Promise<Coupon | null>;
+  toggleCouponStatus: (id: string, isActive?: boolean) => Promise<Coupon | null>;
 }
 
 export const useCouponStore = create<CouponStore>((set, get) => ({
